@@ -27,6 +27,7 @@
 #include <math.h>
 #include <string.h>
 #include <jpeglib.h>
+#include <assert.h>
 
 typedef  struct image_size {
     int width;
@@ -112,6 +113,47 @@ void create_thumbnail(JSAMPARRAY in_buffer, JSAMPARRAY out_buffer, int origin_wi
     }
 }
 
+// create thumbnail image.
+void create_thumbnail2(JSAMPARRAY in_buffer, JSAMPARRAY out_buffer, int origin_width, int origin_height, int width, int height, int target_size, int components) {
+    double width_factor = (double)origin_width / width;
+    double height_factor = (double)origin_height / height;
+    int width_pos[width+1];
+    int width_rem[width];
+    int x;
+    int y;
+    int i;
+    int start_x = 0;
+    int start_y = 0;
+    double pos;
+
+    if(target_size) {
+        width > height ? (start_x = (width - target_size) / 2) : (start_y = (height - target_size) / 2);
+        width = height = target_size;
+    }
+
+    for(x = 0; x < width; x++) {
+      pos = (x + start_x) * width_factor;
+      width_pos[x] = ((int)pos) *  components;
+      width_rem[x] = (int)((pos-(int)pos)*256);
+      assert(0 <= width_rem[x] && width_rem[x] < 256);
+    }
+    width_pos[width] = width_pos[width-1]; // right boundary
+    
+    for(y = 0; y < height; y++) {
+        int height_pos = (int)((y + start_y) * height_factor);
+        for(x = 0; x < width; x++) {
+          unsigned char *dst  = &out_buffer[y][x * components];
+          unsigned char *src0 = &in_buffer[height_pos][width_pos[x]];
+          //unsigned char *src1 = &in_buffer[height_pos][width_pos[x+1]];
+          unsigned char *src1 = src0 + components;
+          
+          for (i = 0; i < components; i++) {
+            dst[i] = (src1[i] * width_rem[x] + src0[i] * (256-width_rem[x])) >> 8;
+          }
+        }
+    }
+}
+
 // main process
 void abstract_resize(VALUE request_size, VALUE in_file_name, VALUE out_file_name, int square){
     Check_Type(in_file_name, T_STRING);
@@ -153,7 +195,7 @@ void abstract_resize(VALUE request_size, VALUE in_file_name, VALUE out_file_name
     }
 
     JSAMPARRAY img = (JSAMPARRAY)sppedpetal_alloc(image_size.width, image_size.height, components);
-    create_thumbnail(buffer, img, in_info.output_width, in_info.output_height, image_size.width, image_size.height, square ? target_size : 0, components);
+    create_thumbnail2(buffer, img, in_info.output_width, in_info.output_height, image_size.width, image_size.height, square ? target_size : 0, components);
 
     speedpetal_free(buffer, in_info.output_height);
     jpeg_finish_decompress(&in_info);
@@ -177,6 +219,7 @@ void abstract_resize(VALUE request_size, VALUE in_file_name, VALUE out_file_name
     out_info.input_components = components;
     out_info.in_color_space = color_space;
     jpeg_set_defaults(&out_info);
+    jpeg_set_quality(&out_info, 75, TRUE);
 
     jpeg_start_compress(&out_info, TRUE);
     jpeg_write_scanlines(&out_info, img, out_info.image_height);
