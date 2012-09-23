@@ -34,6 +34,11 @@ typedef  struct image_size {
     int height;
 } IMAGESIZE;
 
+// Error handle
+void my_error_exit( j_common_ptr cinfo ) {
+  rb_raise(rb_eRuntimeError, "Jpeg error!");
+}
+
 // The ratio of resizes is requested.
 double get_scale_factor(int target_size, int width, int height, int square) {
     int denominator = square ? (width > height ? height : width) : (width > height ? width : height);
@@ -175,6 +180,7 @@ void abstract_resize(VALUE request_size, VALUE in_file_name, VALUE out_file_name
     struct jpeg_decompress_struct in_info;
     struct jpeg_error_mgr jpeg_error;
     in_info.err = jpeg_std_error(&jpeg_error);
+    jpeg_error.error_exit = my_error_exit;
 
     jpeg_create_decompress(&in_info);
     jpeg_stdio_src(&in_info, infile);
@@ -219,7 +225,7 @@ void abstract_resize(VALUE request_size, VALUE in_file_name, VALUE out_file_name
     out_info.input_components = components;
     out_info.in_color_space = color_space;
     jpeg_set_defaults(&out_info);
-    jpeg_set_quality(&out_info, 75, TRUE);
+    jpeg_set_quality(&out_info, 80, TRUE);
 
     jpeg_start_compress(&out_info, TRUE);
     jpeg_write_scanlines(&out_info, img, out_info.image_height);
